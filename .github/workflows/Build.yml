@@ -1,0 +1,86 @@
+name: Build
+
+on:
+  push
+
+jobs:
+  Win64:
+    name: ${{matrix.config.name}}
+    runs-on: windows-2019
+    strategy:
+      matrix:
+        config:
+        - {
+            name: "AdvancedSpatialSoundsUWP",
+            solution: "AdvancedSpatialSoundsUWP"
+          }
+        - {
+            name: "SimplePlay3DSoundUWP",
+            solution: "SimplePlay3DSound"
+          }
+        - {
+            name: "SimplePlay3DSpatialSoundUWP",
+            solution: "SimplePlay3DSpatialSound"
+          }
+        - {
+            name: "SimplePlaySoundStreamUWP",
+            solution: "SimplePlaySoundStreamUWP"
+          }
+        - {
+            name: "SimplePlaySoundUWP",
+            solution: "SimplePlaySound"
+          }
+        - {
+            name: "SimpleSpatialPlaySoundUWP",
+            solution: "SimpleSpatialPlaySoundUWP"
+          }
+        - {
+            name: "SimpleWASAPICaptureUWP",
+            solution: "SimpleWASAPICaptureUWP"
+          }
+        - {
+            name: "SimpleWASAPIPlaySoundUWP",
+            solution: "SimpleWASAPIPlaySound"
+          }
+
+    steps:
+    - uses: actions/checkout@v3
+      with:
+        fetch-depth: '0'
+
+    - name: Add MSBuild to PATH
+      uses: microsoft/setup-msbuild@v1.0.2
+
+    - name: Decode the pfx
+      run: |
+        $pfx_cert_byte = [System.Convert]::FromBase64String("${{ secrets.Base64_Encoded_Pfx }}")
+        $certificatePath = Join-Path -Path "${{github.workspace}}/UWPSamples/Audio/${{matrix.config.name}}/" -ChildPath "GitHubActionsWorkflow.pfx"
+        [IO.File]::WriteAllBytes("$certificatePath", $pfx_cert_byte)
+    - name: Build
+      working-directory: ${{env.GITHUB_WORKSPACE}}
+      run: msbuild /m /p:Configuration=Release /p:Platform=x64 /p:UapAppxPackageBuildMode=SideloadOnly /p:AppxBundle=Always /p:AppxPackageSigningEnabled=true /p:PackageCertificateKeyFile="${{github.workspace}}/UWPSamples/Audio/${{matrix.config.name}}/GitHubActionsWorkflow.pfx" /p:PackageCertificatePassword=${{ secrets.Pfx_Key }} /p:PackageCertificateThumbprint=${{ secrets.THUMBPRINT }} "${{github.workspace}}/UWPSamples/Audio/${{matrix.config.name}}/${{matrix.config.solution}}.sln"
+
+    - name: Remove the pfx
+      run: Remove-Item -path "${{github.workspace}}/UWPSamples/Audio/${{matrix.config.name}}/GitHubActionsWorkflow.pfx"
+
+    - name: Upload a Build Artifact
+      uses: actions/upload-artifact@v3.1.1
+      with:
+        name: "${{matrix.config.name}}"
+        path: "${{github.workspace}}/UWPSamples/Audio/${{matrix.config.name}}/AppPackages/${{matrix.config.solution}}/${{matrix.config.solution}}_1.0.0.0_Test/"
+
+    - name: Compress artifacts
+      uses: papeloto/action-zip@v1
+      with:
+        files: "UWPSamples/Audio/${{matrix.config.name}}/AppPackages/${{matrix.config.solution}}/${{matrix.config.solution}}_1.0.0.0_Test/"
+        dest: "UWPSamples/Audio/${{matrix.config.name}}/AppPackages/${{matrix.config.solution}}/${{matrix.config.name}}.zip"
+        working-directory: ${{env.GITHUB_WORKSPACE}}
+
+    - name: GitHub pre-release
+      uses: "marvinpinto/action-automatic-releases@latest"
+      with:
+        repo_token: "${{secrets.GITHUB_TOKEN}}"
+        automatic_release_tag: "${{matrix.config.name}}"
+        prerelease: False
+        title: "${{matrix.config.name}}"
+        files: "UWPSamples/Audio/${{matrix.config.name}}/AppPackages/${{matrix.config.solution}}/${{matrix.config.name}}.zip"
